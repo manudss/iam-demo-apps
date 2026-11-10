@@ -75,3 +75,40 @@ test('views: gallery lists the apps, denied names the required roles, app page s
   const ro = businessAppPage(bySlug('peoplehub'), { ...user, roles: ['hr-viewer'] }, new Set());
   assert.ok(!ro.includes('Requests waiting for me')); // hidden without the cap
 });
+
+test('wildcard: appBase picks subdomain or path form, host middleware rewrites app subdomains', async () => {
+  const { appBase } = await import('../src/apps/registry.js');
+  const { buildApp } = await import('../src/http.js');
+  const { loadConfig } = await import('../src/config.js');
+  const cfgPlain = loadConfig({ PORT: '3000', PUBLIC_BASE_URL: '', LYAM_BASE_URL: 'http://idp', SESSION_SECRET: 's' });
+  assert.equal(appBase(cfgPlain, bySlug('peoplehub')), 'http://localhost:3000/peoplehub');
+  const cfgWild = loadConfig({ PORT: '3000', PUBLIC_BASE_URL: '', LYAM_BASE_URL: 'http://idp', SESSION_SECRET: 's', WILDCARD_DOMAIN: 'apps.dss.name' });
+  assert.equal(appBase(cfgWild, bySlug('peoplehub')), 'https://peoplehub.apps.dss.name');
+
+  const srv = buildApp(cfgWild).listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const port = srv.address().port;
+  const get = (host) => new Promise((resolve, reject) => {
+    import('node:http').then(({ get: httpGet }) => {
+      httpGet({ host: '127.0.0.1', port, path: '/', headers: { host } }, (res) => {
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location, body }));
+      }).on('error', reject);
+    });
+  });
+  try {
+    // App subdomain: the app home lives at '/', and an anonymous visit bounces to the SSO login path.
+    const res = await get('peoplehub.apps.dss.name');
+    assert.equal(res.status, 302);
+    assert.equal(res.location, '/login');
+    // The shared host keeps the path-based routing and serves the gallery at '/'.
+    assert.match((await get('iam-demo-apps.onrender.com')).body, /PeopleHub/);
+    // Gallery tiles link to the subdomains when the wildcard is configured.
+    assert.match((await get('apps.dss.name')).body, /https:\/\/peoplehub\.apps\.dss\.name\//);
+    // An unknown subdomain falls through to the gallery.
+    assert.match((await get('unknown.apps.dss.name')).body, /App Gallery/);
+  } finally {
+    srv.close();
+  }
+});

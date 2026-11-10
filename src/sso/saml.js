@@ -1,4 +1,5 @@
 import samlify from 'samlify';
+import { appBase } from '../apps/registry.js';
 
 /**
  * SAML service-provider side, samlify (MIT, pinned: earlier versions could accept a response signed with
@@ -49,8 +50,8 @@ export async function identityProvider(cfg, { refresh = false } = {}) {
 
 export function serviceProviderFor(app, cfg) {
   return samlify.ServiceProvider({
-    entityID: `${cfg.baseUrl}/${app.slug}/saml/metadata`,
-    assertionConsumerService: [{ Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST', Location: `${cfg.baseUrl}/${app.slug}/saml/acs` }],
+    entityID: `${appBase(cfg, app)}/saml/metadata`,
+    assertionConsumerService: [{ Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST', Location: `${appBase(cfg, app)}/saml/acs` }],
     wantAssertionsSigned: true,
   });
 }
