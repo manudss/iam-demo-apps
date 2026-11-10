@@ -15,5 +15,8 @@ export function loadConfig(env = process.env) {
     oidcIssuer: `${lyamBase}/api/sso/${tenant}/oidc`,
     samlMetadataUrl: `${lyamBase}/api/sso/${tenant}/saml/metadata`,
     isPublic: !!env.PUBLIC_BASE_URL,
+    // When set (e.g. apps.dss.name), each app is served on its own subdomain <slug>.<wildcard>; the
+    // shared path-based URLs keep working too.
+    wildcard: (env.WILDCARD_DOMAIN || '').replace(/\.$/, '') || null,
   };
 }

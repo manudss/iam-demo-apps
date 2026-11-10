@@ -5,6 +5,11 @@
  *
  * Protocol split: 5 OpenID Connect, 5 SAML 2.0. Both config apps are open to the baseline `employee` role.
  */
+/** The public origin of one app: its own subdomain when a wildcard domain is configured, else a path of the shared service. */
+export function appBase(cfg, app) {
+  return cfg.wildcard ? `https://${app.slug}.${cfg.wildcard}` : `${cfg.baseUrl}/${app.slug}`;
+}
+
 export const APPS = [
   {
     slug: 'peoplehub', name: 'PeopleHub', tagline: 'HR portal: directory, time off, org chart.', protocol: 'oidc',

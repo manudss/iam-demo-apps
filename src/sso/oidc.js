@@ -1,4 +1,5 @@
 import * as oc from 'openid-client';
+import { appBase } from '../apps/registry.js';
 
 /** One discovered configuration per client_id, cached for the process. */
 const configs = new Map();
@@ -18,7 +19,7 @@ export async function oidcConfig(cfg, clientId) {
 }
 
 export function callbackUrl(cfg, app) {
-  return `${cfg.baseUrl}/${app.slug}/auth/callback`;
+  return `${appBase(cfg, app)}/auth/callback`;
 }
 
 /** Step 1: send the browser to Lyam with a PKCE challenge; verifier and state ride in a short-lived signed cookie. */

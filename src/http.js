@@ -1,5 +1,5 @@
 import express from 'express';
-import { APPS, bySlug, canEnter, capabilities } from './apps/registry.js';
+import { APPS, appBase, bySlug, canEnter, capabilities } from './apps/registry.js';
 import * as session from './session.js';
 import * as oidc from './sso/oidc.js';
 import * as saml from './sso/saml.js';
@@ -32,6 +32,25 @@ export function buildApp(cfg) {
   app.disable('x-powered-by');
   app.use(express.urlencoded({ extended: false, limit: '256kb' })); // SAML responses arrive as POST forms
 
+  // Wildcard hosting: peoplehub.apps.dss.name/... serves the same app as <shared host>/peoplehub/...
+  if (cfg.wildcard) {
+    app.use((req, _res, next) => {
+      const host = String(req.headers.host || '').split(':')[0];
+      const suffix = `.${cfg.wildcard}`;
+      if (host.endsWith(suffix)) {
+        const slug = host.slice(0, -suffix.length);
+        if (slug && bySlug(slug)) {
+          req.appSubdomain = slug;
+          req.url = `/${slug}${req.url === '/' ? '/' : req.url}`;
+        }
+      }
+      next();
+    });
+  }
+
+  // Where the app's own pages live from the browser's point of view.
+  const homeOf = (req, a) => (req.appSubdomain ? '/' : `/${a.slug}/`);
+
   const sessionFor = (req, slug) => session.verify(session.cookiesOf(req)[session.sessionCookie(slug)], cfg.sessionSecret);
 
   app.get('/healthz', (_req, res) => res.json({ ok: true, apps: APPS.length }));
@@ -58,7 +77,7 @@ export function buildApp(cfg) {
     try {
       const claims = await oidc.finishLogin(req, a, cfg, session);
       session.setCookie(res, session.sessionCookie(a.slug), session.sign({ claims }, cfg.sessionSecret), { secure: cfg.isPublic });
-      res.redirect(`/${a.slug}/`);
+      res.redirect(homeOf(req, a));
     } catch (e) {
       if (e.error) return res.status(403).send(deniedPage(a, null, `Lyam answered: ${e.error}. ${e.message}`));
       next(e);
@@ -72,7 +91,7 @@ export function buildApp(cfg) {
     try {
       const claims = await saml.finishLogin(a, cfg, req.body);
       session.setCookie(res, session.sessionCookie(a.slug), session.sign({ claims }, cfg.sessionSecret), { secure: cfg.isPublic });
-      res.redirect(`/${a.slug}/`);
+      res.redirect(homeOf(req, a));
     } catch (e) {
       if (e.error === 'access_denied') return res.status(403).send(deniedPage(a, null, e.message));
       next(e);
@@ -91,12 +110,13 @@ export function buildApp(cfg) {
     const a = bySlug(req.params.slug);
     if (!a) return next();
     const s = sessionFor(req, a.slug);
-    if (!s) return res.redirect(`/${a.slug}/login`);
+    if (!s) return res.redirect(req.appSubdomain ? '/login' : `/${a.slug}/login`);
     const claims = s.claims;
     if (!canEnter(a, claims.roles)) return res.status(403).send(deniedPage(a, claims));
     try {
-      if (a.theme.layout === 'config') return res.send(configAppPage(a, claims, await configAppInfo(a, cfg)));
-      res.send(businessAppPage(a, claims, capabilities(a, claims.roles)));
+      const prefix = req.appSubdomain ? '' : `/${a.slug}`;
+      if (a.theme.layout === 'config') return res.send(configAppPage(a, claims, await configAppInfo(a, cfg), prefix));
+      res.send(businessAppPage(a, claims, capabilities(a, claims.roles), prefix));
     } catch (e) { next(e); }
   });
 
@@ -105,7 +125,7 @@ export function buildApp(cfg) {
     const a = bySlug(req.params.slug);
     if (!a || a.protocol !== 'saml') return next();
     res.type('application/samlmetadata+xml').send(
-      `<?xml version="1.0"?><md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${cfg.baseUrl}/${a.slug}/saml/metadata"><md:SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"><md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${cfg.baseUrl}/${a.slug}/saml/acs" index="0"/></md:SPSSODescriptor></md:EntityDescriptor>`,
+      `<?xml version="1.0"?><md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${appBase(cfg, a)}/saml/metadata"><md:SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"><md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${appBase(cfg, a)}/saml/acs" index="0"/></md:SPSSODescriptor></md:EntityDescriptor>`,
     );
   });
 

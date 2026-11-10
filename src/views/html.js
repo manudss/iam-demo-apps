@@ -41,7 +41,7 @@ export function galleryPage(apps, sessions, cfg) {
         <span class="badge ${a.protocol === 'oidc' ? 'b-oidc' : 'b-saml'}">${a.protocol.toUpperCase()}</span>
         ${open ? '<span class="badge b-on">Signed in</span>' : ''}
       </div>
-      <a class="signin" href="/${a.slug}/">${open ? 'Open' : 'Sign in with Lyam'}</a>
+      <a class="signin" href="${cfg.wildcard ? `https://${a.slug}.${cfg.wildcard}/` : `/${a.slug}/`}">${open ? 'Open' : 'Sign in with Lyam'}</a>
     </div>`;
   }).join('');
   const css = `
@@ -115,7 +115,7 @@ function tableCard(t, caps, theme) {
 }
 
 /** A business app: profile from the real claims, fixtures for the business content, rights from the roles. */
-export function businessAppPage(app, user, caps) {
+export function businessAppPage(app, user, caps, prefix = `/${app.slug}`) {
   const t = app.theme;
   const protocolNote = app.protocol === 'oidc'
     ? 'OIDC authorization code + PKCE · profile and roles read from the ID token claims.'
@@ -149,7 +149,7 @@ export function businessAppPage(app, user, caps) {
     body: `
     <div class="topbar"><div class="logo"><div class="dot">${esc(t.icon)}</div>${esc(app.name)}</div>
       <nav><a class="on" href="#">Dashboard</a><a href="#">More</a><a href="#">Reports</a><a href="#">Settings</a></nav>
-      <div style="flex:1"></div><a class="out" href="/${app.slug}/logout" style="color:rgba(255,255,255,.7)">Sign out</a>
+      <div style="flex:1"></div><a class="out" href="${prefix}/logout" style="color:rgba(255,255,255,.7)">Sign out</a>
       <div style="display:flex;align-items:center;gap:9px;color:#fff;">${userChip(user, true)}</div>
     </div>
     <div class="wrap">
@@ -170,7 +170,7 @@ export function businessAppPage(app, user, caps) {
 }
 
 /** The two configuration apps: they show the real endpoints/metadata of the protocol they use themselves. */
-export function configAppPage(app, user, info) {
+export function configAppPage(app, user, info, prefix = `/${app.slug}`) {
   const t = app.theme;
   const isOidc = app.protocol === 'oidc';
   const css = `
@@ -210,7 +210,7 @@ export function configAppPage(app, user, info) {
       <div class="card"><h3>1 · ${isOidc ? 'Provider discovery' : 'IdP metadata'}</h3><pre>${esc(info.document)}</pre></div>
       <div class="card"><h3>2 · This ${isOidc ? 'client' : 'service provider'}</h3><table><tr><th>Field</th><th>Value</th></tr>${rows}</table></div>
       <div class="card"><h3>3 · Test the flow</h3>${steps.map((s, i) => `<div class="step"><div class="tick">${i < 3 ? '✓' : i + 1}</div>${esc(s)}</div>`).join('')}
-        <div style="margin-top:14px;"><a class="btn" href="/${app.slug}/logout">Run a fresh test sign-in</a></div></div>
+        <div style="margin-top:14px;"><a class="btn" href="${prefix}/logout">Run a fresh test sign-in</a></div></div>
     </div>`,
   });
 }
