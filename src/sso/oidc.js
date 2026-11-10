@@ -3,10 +3,15 @@ import * as oc from 'openid-client';
 /** One discovered configuration per client_id, cached for the process. */
 const configs = new Map();
 
+// Plain HTTP is only ever a local development or test IdP; production issuers are HTTPS and never get this.
+function insecureIfHttp(url) {
+  return new URL(url).protocol === 'http:' ? { execute: [oc.allowInsecureRequests] } : undefined;
+}
+
 export async function oidcConfig(cfg, clientId) {
   let conf = configs.get(clientId);
   if (!conf) {
-    conf = await oc.discovery(new URL(cfg.oidcIssuer), clientId, undefined, oc.None()); // public client: no secret, PKCE protects the code
+    conf = await oc.discovery(new URL(cfg.oidcIssuer), clientId, undefined, oc.None(), insecureIfHttp(cfg.oidcIssuer)); // public client: no secret, PKCE protects the code
     configs.set(clientId, conf);
   }
   return conf;
@@ -45,8 +50,14 @@ export async function finishLogin(req, app, cfg, session) {
   }
   if (!pending) throw Object.assign(new Error('The sign-in attempt expired. Please try again.'), { error: 'session_expired' });
   const conf = await oidcConfig(cfg, app.slug);
-  const tokens = await oc.authorizationCodeGrant(conf, url, { pkceCodeVerifier: pending.v, expectedState: pending.s });
-  const claims = tokens.claims();
+  const tokens = await oc.authorizationCodeGrant(conf, url, { pkceCodeVerifier: pending.v, expectedState: pending.s }, insecureIfHttp(cfg.oidcIssuer));
+  const idClaims = tokens.claims();
+  // Standard IdPs serve profile and roles at userinfo (the ID token stays small); read both, userinfo wins.
+  let info = {};
+  try {
+    if (tokens.access_token) info = await oc.fetchUserInfo(conf, tokens.access_token, idClaims.sub, insecureIfHttp(cfg.oidcIssuer));
+  } catch { /* userinfo optional: some IdPs put every claim in the ID token instead */ }
+  const claims = { ...idClaims, ...info };
   return {
     protocol: 'oidc',
     sub: claims.sub,
