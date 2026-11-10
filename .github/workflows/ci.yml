@@ -1,0 +1,19 @@
+name: ci
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+      - name: Boot smoke check
+        run: |
+          PORT=3100 node src/server.js & sleep 2
+          curl -fsS http://localhost:3100/healthz | grep '"ok":true'
+          curl -fsS http://localhost:3100/ | grep -q 'PeopleHub'
+          curl -fsS http://localhost:3100/expenseflow/saml/metadata | grep -q EntityDescriptor
