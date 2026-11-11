@@ -22,6 +22,12 @@ export function callbackUrl(cfg, app) {
   return `${appBase(cfg, app)}/auth/callback`;
 }
 
+/** The callback URL as openid-client must see it: the public one (beginLogin's redirect_uri), with the query of the incoming request. Basing it on the request host breaks under wildcard hosting, where the public origin is the app's subdomain, not the shared service URL. */
+export function callbackUrlFromRequest(cfg, app, originalUrl) {
+  const search = new URL(originalUrl, cfg.baseUrl).search;
+  return new URL(callbackUrl(cfg, app) + search);
+}
+
 /** Step 1: send the browser to Lyam with a PKCE challenge; verifier and state ride in a short-lived signed cookie. */
 export async function beginLogin(req, res, app, cfg, session) {
   const conf = await oidcConfig(cfg, app.slug);
@@ -42,7 +48,7 @@ export async function beginLogin(req, res, app, cfg, session) {
 export async function finishLogin(req, app, cfg, session) {
   const jar = session.cookiesOf(req);
   const pending = session.verify(jar[`oidc_${app.slug}`], cfg.sessionSecret, 10 * 60 * 1000);
-  const url = new URL(req.originalUrl, cfg.baseUrl);
+  const url = callbackUrlFromRequest(cfg, app, req.originalUrl);
   const denied = url.searchParams.get('error');
   if (denied) {
     const err = new Error(url.searchParams.get('error_description') || denied);

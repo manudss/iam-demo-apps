@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sign, verify } from '../src/session.js';
 import { APPS, bySlug, canEnter, capabilities } from '../src/apps/registry.js';
-import { normalizeRoles } from '../src/sso/oidc.js';
+import { normalizeRoles, callbackUrl, callbackUrlFromRequest } from '../src/sso/oidc.js';
 import { parseIdpMetadata } from '../src/sso/saml.js';
 import { galleryPage, deniedPage, businessAppPage } from '../src/views/html.js';
 
@@ -111,4 +111,19 @@ test('wildcard: appBase picks subdomain or path form, host middleware rewrites a
   } finally {
     srv.close();
   }
+});
+
+test('oidc callback URL: always the public one (subdomain under wildcard hosting), never the request host', () => {
+  const peoplehub = bySlug('peoplehub');
+  const wild = { baseUrl: 'https://iam-demo-apps.onrender.com', wildcard: 'apps.dss.name' };
+  // Under wildcard hosting the app answers on peoplehub.apps.dss.name; the callback openid-client validates
+  // (and re-sends as redirect_uri at the token endpoint) must be that public URL, whatever host served the request.
+  assert.equal(callbackUrl(wild, peoplehub), 'https://peoplehub.apps.dss.name/auth/callback');
+  assert.equal(callbackUrlFromRequest(wild, peoplehub, '/auth/callback?code=abc&state=xyz').href,
+    'https://peoplehub.apps.dss.name/auth/callback?code=abc&state=xyz');
+  // Path mode (no wildcard): the shared service URL with the app's path.
+  const local = { baseUrl: 'http://localhost:3000', wildcard: null };
+  assert.equal(callbackUrl(local, peoplehub), 'http://localhost:3000/peoplehub/auth/callback');
+  assert.equal(callbackUrlFromRequest(local, peoplehub, '/peoplehub/auth/callback?code=abc&state=xyz').href,
+    'http://localhost:3000/peoplehub/auth/callback?code=abc&state=xyz');
 });
