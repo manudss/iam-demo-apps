@@ -20,8 +20,8 @@ async function configAppInfo(app, cfg) {
   const info = {
     document,
     redirectUri: oidc.callbackUrl(cfg, app),
-    entityId: `${cfg.baseUrl}/${app.slug}/saml/metadata`,
-    acsUrl: `${cfg.baseUrl}/${app.slug}/saml/acs`,
+    entityId: `${appBase(cfg, app)}/saml/metadata`,
+    acsUrl: `${appBase(cfg, app)}/saml/acs`,
   };
   discoveryCache.set(app.slug, { at: Date.now(), document });
   return info;
